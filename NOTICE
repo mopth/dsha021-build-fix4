@@ -1,0 +1,25 @@
+dsha021-build-fix4 — NOTICE
+
+This repository contains only unofficial modifications (patches, reports, and the
+modified source files they touch) for the following upstream projects.
+All upstream code remains the property of its authors and is used under the MIT License.
+
+Base (patches apply against this):
+  Repo   : dsha-build (fork/derivative of DSH-APP/DSHA), tag v0.2.25-dsh0.2.1-rc2-test
+  Commit : 54062749b44239f59d17eaa710f698eb0793025a
+  License: MIT, Copyright (c) 2026 qiannianhuanxiang   -> licenses/LICENSE.dsha-build
+           (byte-identical to DSH-APP/DSHA LICENSE   -> licenses/LICENSE.DSHA)
+
+Core (bundled runtime the client is built around; no source of it is included here):
+  @deepseek-ai/dsh 0.2.1-rc.2, project deepseek-ai/deepseek-harness
+  License: MIT, Copyright (c) 2026 DeepSeek           -> licenses/LICENSE.deepseek-harness
+
+Plugins (diffs only): dsh-peak-chip, dsh-session-health, dsh-subagent-model-picker
+  Each declares MIT in its own package.json; dsh-peak-chip's LICENSE names
+  "deepseekV4.1Flash" as copyright holder. Upstream notices are kept in their original projects.
+
+The third-party components bundled by the upstream app (LGPL/MPL/Apache etc.) are NOT
+included here; see THIRD_PARTY_NOTICES.md of the upstream repo.
+
+Our own additions (patches, docs) are released under the same MIT terms (see LICENSE);
+the upstream copyright notices above must be retained in all copies.

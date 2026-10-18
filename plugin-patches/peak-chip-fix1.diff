@@ -1,0 +1,60 @@
+--- ../patched/dsh-peak-chip/lib/client.js	2026-10-18 10:18:49.000000000 +0800
++++ dsh-peak-chip/lib/client.js	2026-10-18 11:40:47.994150520 +0800
+@@ -634,11 +634,9 @@
+       var css = [
+         '[' + CHIP_ATTR + ']{display:inline-flex;align-items:center;gap:4px;',
+         'height:22px;padding:0 9px;border-radius:11px;font-size:12px;line-height:1;',
+-        'white-space:nowrap;flex:none;cursor:pointer;background:transparent;font-family:inherit;}',
+-        '[' + CHIP_ATTR + '][data-in="tabs"]{margin-left:auto;align-self:center;',
++        'white-space:nowrap;flex:none;cursor:pointer;background:transparent;font-family:inherit;-webkit-tap-highlight-color:transparent;}',
++        '[' + CHIP_ATTR + '][data-in="tabs"]{margin-left:8px;align-self:center;',
+         'justify-content:center;padding:0 8px;border:0;background:transparent;}',
+-        '[' + CHIP_ATTR + '][data-in="float"]{position:fixed;right:12px;bottom:84px;z-index:2147482000;',
+-        'background:rgba(24,28,48,.96);color:#e6ebff;box-shadow:0 4px 16px rgba(0,0,0,.45);}',
+         '[' + CHIP_ATTR + '] .' + NS + '-dot{width:14px;height:14px;border-radius:50%;flex:none;display:inline-block;}',
+         '.' + NS + '-card{position:fixed;z-index:2147483000;box-sizing:border-box;',
+         'padding:10px 11px;border-radius:14px;background:#171a2e;color:#e6ebff;',
+@@ -1276,30 +1274,22 @@
+       var e = ensureChip();
+ 
+       var rowEl = findTabsRow();
+-      var inTabs = rowEl !== null;
+-      if (inTabs) {
+-        if (e.parentNode !== rowEl) rowEl.appendChild(e);
+-        if (e.getAttribute('data-in') !== 'tabs') e.setAttribute('data-in', 'tabs');
+-      } else {
+-        /* 找不到那一行（出货结构变了、或还在新会话 Hero 页）→ 浮到右下角，
+-           这样"插件根本没跑"和"锚点没找对"就能一眼区分开。 */
+-        if (e.parentNode !== document.body) document.body.appendChild(e);
+-        if (e.getAttribute('data-in') !== 'float') e.setAttribute('data-in', 'float');
++      if (rowEl === null) {
++        /* 找不到「对话 / 轨迹」那一行（出货结构变了、或还在新会话 Hero 页）→ 不再浮到屏幕上
++           （固定定位的浮窗可能压住页头的子智能体入口）：先摘掉圆点，下一次 tick 再找。 */
++        if (panel) closePanel();
++        if (e.parentNode) e.parentNode.removeChild(e);
++        return;
+       }
++      /* 紧跟在「轨迹」后面，固定小间距，不用 margin-left:auto 把它推到行尾 */
++      if (e.parentNode !== rowEl) rowEl.appendChild(e);
++      if (e.getAttribute('data-in') !== 'tabs') e.setAttribute('data-in', 'tabs');
+ 
+-      /* 只有圆点会变：颜色就是全部信息。两种形态都显式写全，免得复用到的
+-         旧元素残留着上一次的行内样式（那个"带框胶囊"就是这么来的）。
+-         浮到右下角时保留深色底，否则一个孤零零的点在页面上没人看得见。 */
++      /* 只有圆点会变：颜色就是全部信息。 */
+       e.childNodes[0].style.background = color;
+-      if (inTabs) {
+-        e.style.border = 'none';
+-        e.style.background = 'transparent';
+-        e.style.color = 'inherit';
+-      } else {
+-        e.style.border = '1px solid ' + color + '66';
+-        e.style.background = 'rgba(24,28,48,.96)';
+-        e.style.color = '#e6ebff';
+-      }
++      e.style.border = 'none';
++      e.style.background = 'transparent';
++      e.style.color = 'inherit';
+       e.setAttribute('aria-label', 'DeepSeek 当前' + (ph.peak ? '高峰' : '空闲') +
+         (nx ? '，' + fmtDur(nx.inMs) + '后切换' : '') + '，点击看详情');
+ 

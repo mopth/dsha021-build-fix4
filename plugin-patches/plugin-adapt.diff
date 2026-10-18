@@ -1,0 +1,84 @@
+diff -u '--exclude=node_modules' -r a/dsh-peak-chip/package.json b/dsh-peak-chip/package.json
+--- a/dsh-peak-chip/package.json	2026-10-18 10:18:49.487759207 +0800
++++ b/dsh-peak-chip/package.json	2026-10-18 10:33:28.467759207 +0800
+@@ -22,8 +22,8 @@
+     }
+   },
+   "peerDependencies": {
+-    "@deepseek-ai/dsh-credentials": "^0.1.5-rc.2",
+-    "@deepseek-ai/dsh-settings": "^0.1.5-rc.2",
++    "@deepseek-ai/dsh-credentials": "^0.1.5-rc.2 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-settings": "^0.1.5-rc.2 || ^0.2.1-rc.1",
+     "@deepseek-ai/schemastery": "^1.0.0"
+   }
+ }
+diff -u '--exclude=node_modules' -r a/dsh-subagent-model-picker/lib/tools.js b/dsh-subagent-model-picker/lib/tools.js
+--- a/dsh-subagent-model-picker/lib/tools.js	2026-10-18 10:18:49.495759207 +0800
++++ b/dsh-subagent-model-picker/lib/tools.js	2026-10-18 10:26:04.487759207 +0800
+@@ -1,5 +1,21 @@
+ import { defineTool } from '@deepseek-ai/dsh-tools';
+-import { settleRun } from '@deepseek-ai/dsh-subagent';
++/* 0.2.1-rc.2 的 dsh-subagent 不再导出 settleRun；这里是 0.1.7-rc.2 实现的本地等价（等待 run.result、dispose、折叠为 outcome）。 */
++function runOutcomeLocal(result) {
++    const detail = () => (typeof result?.diagnostic === 'string' ? result.diagnostic : result?.diagnostic ? JSON.stringify(result.diagnostic) : String(result?.stopReason));
++    switch (result.stopReason) {
++        case 'completed': return { status: 'completed', result: outputValueText(Array.isArray(result.output) ? result.output : []) };
++        case 'aborted': return result.diagnostic === undefined ? { status: 'killed' } : { status: 'failed', detail: detail() };
++        default: return { status: 'failed', detail: detail() };
++    }
++}
++async function settleRun(run) {
++    let outcome;
++    try { outcome = runOutcomeLocal(await run.result); }
++    catch (error) { outcome = { status: 'failed', detail: String(error) }; }
++    try { await run.dispose(); }
++    catch (error) { return { status: 'failed', detail: `${outcome.detail === undefined ? '' : `${outcome.detail}; `}dispose failed: ${String(error)}` }; }
++    return outcome;
++}
+ /** Render text blocks from the canonical JSON block array without trusting arbitrary values. */
+ function outputValueText(values) {
+     return values
+diff -u '--exclude=node_modules' -r a/dsh-subagent-model-picker/package.json b/dsh-subagent-model-picker/package.json
+--- a/dsh-subagent-model-picker/package.json	2026-10-18 10:18:49.495759207 +0800
++++ b/dsh-subagent-model-picker/package.json	2026-10-18 10:33:28.467759207 +0800
+@@ -37,11 +37,11 @@
+   },
+   "peerDependencies": {
+     "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-jobs": "^0.1.0-rc.5",
+-    "@deepseek-ai/dsh-llm": "^0.1.0-rc.5",
+-    "@deepseek-ai/dsh-subagent": "^0.1.0-rc.5",
+-    "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.5",
+-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.5"
++    "@deepseek-ai/dsh-jobs": "^0.1.0-rc.5 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-llm": "^0.1.0-rc.5 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-subagent": "^0.1.0-rc.5 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.5 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-tools": "^0.1.0-rc.5 || ^0.2.1-rc.1"
+   },
+   "devDependencies": {
+     "@types/node": "^22.0.0",
+diff -u '--exclude=node_modules' -r a/dsh-session-health/package.json b/dsh-session-health/package.json
+--- a/dsh-session-health/package.json	2026-10-18 10:18:49.523759207 +0800
++++ b/dsh-session-health/package.json	2026-10-18 10:33:28.475759207 +0800
+@@ -49,13 +49,13 @@
+   },
+   "peerDependencies": {
+     "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-commands": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-session-projection": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
+-    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
++    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.6 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-commands": "^0.1.0-rc.6 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-session": "^0.1.0-rc.6 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-session-projection": "^0.1.0-rc.6 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6 || ^0.2.1-rc.1",
++    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6 || ^0.2.1-rc.1",
+     "react": "^18.2.0"
+   },
+   "devDependencies": {

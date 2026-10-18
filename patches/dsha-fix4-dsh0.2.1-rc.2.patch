@@ -1,0 +1,1291 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index 59bbf26..0408174 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -23,9 +23,9 @@ android {
+         minSdk 30
+         targetSdk 37
+         buildConfigField 'String', 'BUNDLED_PNPM_VERSION', '"' + bundledTools.pnpm.version + '"'
+-        versionCode 174
++        versionCode 178
+         // DSHA 修订号 + 固定的北京时间戳 + 内置 DSH 版本；同一交付重建不变。
+-        versionName "0.2.25-20261017.1958-dsh0.2.1-rc.2"
++        versionName "0.2.25-20261018.0230-dsh0.2.1-rc.2-fix4"
+         testInstrumentationRunner project.findProperty('dsha.testRunner') ?: "com.deepseekharness.app.Rc13Instrumentation"
+         ndk {
+             abiFilters 'arm64-v8a'
+diff --git a/app/src/main/assets/recovery-agent.js b/app/src/main/assets/recovery-agent.js
+index 890e24a..d7e4fda 100644
+--- a/app/src/main/assets/recovery-agent.js
++++ b/app/src/main/assets/recovery-agent.js
+@@ -94,6 +94,14 @@ export function verifyRoster(tools, scope) {
+   if (JSON.stringify(names) !== JSON.stringify([...toolNames].sort()) || tools.modeFor(scope) !== 'native') throw Error('RECOVERY_TOOL_ROSTER');
+   return names;
+ }
++/** 单行、脱敏、最长 300 字符；只含错误名和消息，不含堆栈、令牌、密钥或本机路径之外的长标识。 */
++export function failureDetail(error, env = process.env) {
++  let text;
++  try { text = `${error?.name ?? 'Error'}: ${error?.message ?? String(error)}`; } catch { text = 'Error: unprintable'; }
++  for (const value of [env.DSHA_RECOVERY_BROKER_TOKEN, env.DEEPSEEK_API_KEY]) if (value && value.length > 3) text = text.split(value).join('***');
++  text = text.replace(/\b(Bearer|Basic)\s+\S+/gi, '$1 ***').replace(/\bsk-[A-Za-z0-9_-]{8,}/g, '***').replace(/\b[A-Fa-f0-9]{32,}\b/g, '***').replace(/[A-Za-z0-9+\/_=-]{40,}/g, '***');
++  return text.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
++}
+ export function apply(ctx) {
+   const instance = process.env.DSHA_RECOVERY_INSTANCE_ID;
+   if (!/^[a-f0-9]{32}$/.test(instance ?? '') || !/^[1-9][0-9]*$/.test(process.env.DSHA_RECOVERY_GENERATION ?? '')) throw Error('RECOVERY_INSTANCE_ID');
+@@ -116,5 +124,5 @@ export function apply(ctx) {
+     await ensureRecoveryWorkspace(ctx.workspaceRegistry);
+     await request('diagnostics', {}, AbortSignal.timeout(5000));
+     if (!disposed) process.stdout.write(`DSHA_RECOVERY_AGENT_READY:${instance}\n`);
+-  }).catch(() => { if (!disposed) process.stderr.write('DSHA_RECOVERY_AGENT_FAILED\n'); });
++  }).catch(error => { if (!disposed) process.stderr.write(`DSHA_RECOVERY_AGENT_FAILED:${failureDetail(error)}\n`); });
+ }
+diff --git a/app/src/main/assets/runtime-descriptor.json b/app/src/main/assets/runtime-descriptor.json
+index 213830d..0e7184d 100644
+--- a/app/src/main/assets/runtime-descriptor.json
++++ b/app/src/main/assets/runtime-descriptor.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "runtimeId": "28aeca3f1630ab952e04ad5317ea46b6ce19bc8c57fa8d098bbbf652bc9651fa",
++  "runtimeId": "2c6e28f58a5d3cb21a5cd52db2631a1459550eeb97c6393520f388962f2a6482",
+   "baseVersion": "10",
+   "dshVersion": "0.2.1-rc.2",
+   "launcherContract": "DSHA_ARM64_V2",
+@@ -23,7 +23,7 @@
+     "app/src/main/jniLibs/arm64-v8a/libbxroot-runtime.so": "53db5fec3cf010166a1da125bb12f688741ca2af33a12b8f2a1e09f5630d61de",
+     "app/src/main/jniLibs/arm64-v8a/libbxroot-ulx.so": "504fb08072c89214025408fbefa6ca87922027914724c9d6cd477f6dc1d0fd79",
+     "app/src/main/jniLibs/arm64-v8a/libbxroot.so": "bd337de26da5f4e5e4bc4d7994151a93a8d8326d7c5727d7942ccef2953d735a",
+-    "app/src/main/jniLibs/arm64-v8a/libdsha-session.so": "12ace2a08056105a663f0ebc492e568d8322a6b252550a16bc05668ed9a58ed5",
++    "app/src/main/jniLibs/arm64-v8a/libdsha-session.so": "5a2a6e61f8849a4c4cbd5ecbe5a9036c4039f9abde0948cd94ef37e136d7ebee",
+     "app/src/main/jniLibs/arm64-v8a/libproot.so": "cbde86eb01b58413f9e4673e182caca5440e8fc4af8482a0e23d0faa0846f721",
+     "app/src/main/jniLibs/arm64-v8a/libprootloader.so": "a2cbccfc776e23225b75e6700dd1990fcd505d2e973f5bfa19c76642d4e41c7d",
+     "app/src/main/jniLibs/arm64-v8a/libprootloader32.so": "4c649eb2dce258c9111231940fdbf0474bcf1cd6dd447ad9bdf2898b35a85554",
+@@ -63,7 +63,7 @@
+     "backup/HostMaintenancePending.java": "81c72784b94b2807580a3c14ef4bb3348fc4026bfc98c2a8434a3bffb9b8e274",
+     "backup/HostOperationArchive.java": "f47eed445ed381f38b3f93800663ac7c8a444825862ab81e7925051dd5fb5807",
+     "backup/HostPendingTransactions.java": "bc07c29e92185c1fa34bba753856b65ea73eacbb687955f5a882ef3dd8ad1af9",
+-    "backup/HostRuntimeDiagnostics.java": "b8f32f28b4d4f42d00274d0c72ffaef3eb327ba9b23a5b170d0667989608cb15",
++    "backup/HostRuntimeDiagnostics.java": "9af098d702ef85cc78fe2d7af0c0d2d66a3b969f7e8af9afc0b3244baab5e6bb",
+     "backup/HostSnapshot.java": "5a1ba2c7ab5c50f19799deb4f13c3144bb08a805ccc127965be1e6508d21d72f",
+     "backup/HostWebLog.java": "9d86b1ea9051174a2fc1f06b2d6486f13d9424e6d4ca980f7ff832bd0458cb98",
+     "backup/LegacyBackupImporter.java": "2c652b4729f8c206ec508fa6a8e6654de180efbdcd048e26261c4c636e048515",
+@@ -137,7 +137,7 @@
+     "core/StartupIssueBudget.java": "be73f10b2767057127db393d7f4457ccb5b802130b59307a2c5453d737e7db66",
+     "core/StartupPipeline.java": "22f615c3aa888911ce761f6aa7f0fdc3768a06cb43baad97ba7891b44697efc2",
+     "core/TerminalSessionOwner.java": "9814f6d278dd2ee491a3ae5c88e65f69fa5c66bd3467a60ff4198d7eb166cc35",
+-    "core/WebLifecycleController.java": "755a2833f3a07591c10a0e2a45694fa27ebe0dedba6703ff612683e37d287311",
++    "core/WebLifecycleController.java": "bed34c7e4797861b9cb4ba1ccc9eac4c6e4a3262b33b0233ba37c9d875a733a0",
+     "core/WebOutputSession.java": "7c32e1cc2f05cb139f6e4a17fc6ced7bfbf1c3bf4e42bd94d332b74cac452b29",
+     "core/WebProcessSession.java": "ead02def95cfc0666097b543788ab330ea4acb92cb2a589d07857c1e732b90bc",
+     "core/WebReadyTasks.java": "3010c17320d375cd78db5f27d09dee863e03da3d960a39aac018b7ed8165b493",
+@@ -203,15 +203,16 @@
+     "runtime/AndroidTrustedAssetFileSystem.java": "e00efc057c767693cbd6a8d49580a70b4945e7ae677f771711fe02a1a6625d6f",
+     "runtime/ArchiveFileBoundary.java": "92902df998f7cbf822f0ac11f1f33007a2d30fcd1af052f86013013df0a8e872",
+     "runtime/BasicToolsInstaller.java": "c9fb7493d7db8f9c5d84f42ec8bb08fec6d1ad4372f149b3170acae096d839f7",
+-    "runtime/BoundedGuestBootRecovery.java": "b648907a74e1e71a6d2f2d976e8cb9dfbdd19480425153a909ebd240cf4c7268",
++    "runtime/BoundedGuestBootRecovery.java": "7dba32831eab3cafd1ffc4173a30f3c7cf5bf5a2498ea3dae500b57e05bae74b",
+     "runtime/BoundedGuestLifetime.java": "2ff99d961b010f31959df45ebf2c68c779672d84035ee4a578d770107074d431",
+-    "runtime/BoundedGuestSessions.java": "927a877a66acac803242a8114c9cae291c331600adb4029ff77967aeceabe806",
++    "runtime/BoundedGuestSessions.java": "df2b746611dabdb6f854ffad0c5e60fcd5d708cb8825902ccb41d4f664c01595",
+     "runtime/BxrootPrivateRoot.java": "1ef7b828f8abc8cca0279e00cfca4531269289abfa8680dbada532dfbbe857ce",
+     "runtime/BxrootRuntime.java": "a55b4bcbf00f3df3d73f6f417272a0cc08e3b8049f80ca02a8702cb15dc641c5",
+     "runtime/ColdBundleExtractor.java": "8794a5e8b1dd0ac6dce00d55c964e7ce26fd24d1a1f4574eddf6386401018c07",
+     "runtime/ColdBundleTransaction.java": "f3e86f44dc6b2e97530aa41451ab08fe2443ae75e25d1dfe04459411eb1b8537",
++    "runtime/ColdEngineFallback.java": "91f387d7ed18dc50dd3261a846e6675c5ca98890dfc5ef11ba5f7ecfec0b5b58",
+     "runtime/ColdSplitExtraction.java": "be4daf1824282a815d26fd937d1cd69548894b4aa41390d1900aca46651be616",
+-    "runtime/ColdToolsInstaller.java": "bd2ac49633f2e62e831726456b6fb1ea08a4ff031dcc13ae7517ceb7e5480d96",
++    "runtime/ColdToolsInstaller.java": "4a63a2e8bae0b91eba9d011e04f9ccf46681b52171590da09174c84e5b003839",
+     "runtime/ContainerRuntime.java": "88c1764b72522f0d76c2df9f793cab8b6462a63e89754050c370a238f904ee04",
+     "runtime/EngineSpec.java": "bc38edba571fb49f8145e48089824c109ae5936ffc224458142c11ef1d8b369c",
+     "runtime/GuestCommandOutput.java": "4afdafd1120e969e840c9b3c1992ebd6561e1086e54a82a3ef235aaac40001b3",
+@@ -220,15 +221,15 @@
+     "runtime/GuestScriptQueue.java": "05451a973d3f02192566ca73aabc67740844a3b1018af91bb197f4750fb82c63",
+     "runtime/GuestScripts.java": "71fb202784a5d499a865c6ed221cae98d5b7731b03e71b771e5f1b9ea4f42868",
+     "runtime/InstallPipeline.java": "632599dfa86b646af68c91d3276c4f126c29c8ef99b85e6409d5424440bf1238",
+-    "runtime/IsolatedInstallProcess.java": "4d9397ac934ece3529a75e30ac1cc50d41af1e01336f60794c43080dc4e681bf",
++    "runtime/IsolatedInstallProcess.java": "7718455f76abb58ca3730ccd8cd768d226d9d56a5315a795e5ef3933765e630b",
+     "runtime/LaunchSpec.java": "c4074a315b664c336aedc6e20e45e6abc0e200567471b06d604206337983145a",
+     "runtime/ManagedModuleStaging.java": "f20339302173244d7b59751ab905733e907d779feea272f31ef879ee46a6b2ee",
+     "runtime/ManagedOverlayEdits.java": "f9ad71446eaaeed0174d53997cccf6c36c7c7eabd266790f5e9350d1869dc430",
+     "runtime/ManagedRuntimeAssets.java": "dfb88643cba2da805d7f7cec51215f7dc6d5aa6065ac801842e5036f0194b760",
+     "runtime/NativeProcess.java": "6c76b0566a6736d8d862c98e552b981dc6f6423cc833665e0f3c5d52655e9f72",
+     "runtime/NativeStorage.java": "3dc50a7d8233d3a2579fe5168dd87a05977cf896e69d57094f37b3aaf1b745b3",
+-    "runtime/NativeTreeControl.java": "6cba2af4ce8eb015412845b7590983bc5a728258acc2d5f048d5df69c55fb8e4",
+-    "runtime/OwnedBirthEvidence.java": "b798fd4470e9e273e5cf7ba5083ea0a3f1f06ca8f37dd67ff928cc50b888a634",
++    "runtime/NativeTreeControl.java": "32ca4441c718491103cc3f4eb2d78e124994c99267a726d35f5c1909c89c8626",
++    "runtime/OwnedBirthEvidence.java": "48bcefab134f625400966c1c98b5ae84995847f17807d66e78645e5fb8657bcd",
+     "runtime/OwnedGuestProof.java": "669af54116fb0f91c814c4b020a911d07df18cc598d55f9b0d348e9519d8c5c1",
+     "runtime/OwnedRuntimeSession.java": "fc0405c645c82a2d7738c190cdad85445241aec3e03a45363f8e7992df7f00cf",
+     "runtime/PrivilegedPackageContext.java": "7e9d1e48da09a82b68ab09ca03b8d453abea99437e9d28466218c369a2e60b76",
+@@ -236,15 +237,15 @@
+     "runtime/ProotBootstrap.java": "d6ac158b67a5c3b0e60e55abfb4d51e02042fba89ea50f12784a9582ba0e0043",
+     "runtime/PtyGuestOwner.java": "d780990996e69d89da0144f209bcf66edeebcbee4bb7593cc35bf82f68ff47cb",
+     "runtime/Rc1MigrationCache.java": "5285bbf8a96e17e02a0438578fa2b7d5a9fe8ded43091e95c42633139ad7d85f",
+-    "runtime/RecoveryToolchain.java": "e3453d2aaf156161cef3839323fb969bbf8976a6bbafea1cf6b2d7e1c302d3f4",
++    "runtime/RecoveryToolchain.java": "610ad0941d92f569ca89b976095c8a29f61981b22ab9d7cdd818c178f3a21947",
+     "runtime/RootfsInstaller.java": "2733a3c2332b478fc8d5887cd0899e38ab7c48555a20f63d61b6eb4184bc3828",
+     "runtime/RootfsReadiness.java": "c2d207baaa247ea0808824ce431b633c6e6a8a17e48dbbd6e6ecae7bd6dce6c8",
+     "runtime/RuntimeAssetFiles.java": "1fa7d33729a69ec15adfc4d9236585e3a7c0c213ea599fe1efe6c644a0be9a17",
+     "runtime/RuntimeAssetText.java": "4e86e2ea627aa3b3525e76704ac5c6220e485cea786f0c1baa7136d0cb72a1b5",
+     "runtime/RuntimeDataTransfers.java": "4c1a071fe6fa8bc615a9ee2d81f87672b0b693431eb691f76d6a149f805c7828",
+     "runtime/RuntimeEngineProbe.java": "1793e0ec4139cb299f7e8335001237a91053b93782124a26c5e2656f2bda41da",
+-    "runtime/RuntimeEngineQualification.java": "662c93d3e10cc98f60b113b1d8ad3a2c562b41d8bc6ba12a54ff3bcadbc4579d",
+-    "runtime/RuntimeExecution.java": "df9f4a90036d775f57c2fda717181212353521df3e072ade6e10e3c10216b026",
++    "runtime/RuntimeEngineQualification.java": "3ffb05e5196cb8faf464eeb71f403286af749286a97d447b002a38540386105e",
++    "runtime/RuntimeExecution.java": "44e7bb2d1b4a005596d532e28eeda21f9bb41d366089ff337f64b89c49ddca39",
+     "runtime/RuntimeHardlinks.java": "96f4ac6c54a8d8dbf1812fe0da2cc9bbf31793b2440ce3de211f486d9f828202",
+     "runtime/RuntimeHostPorts.java": "fbc92e8f27e9393c099ea554588b8c82d17e068fe5e8d685a53e43f6fef50153",
+     "runtime/RuntimeInstallationState.java": "0ee0051474f5be7ad35aab12d7f3cd740ea34019b4349fa6ccaa0636d2507929",
+@@ -252,7 +253,7 @@
+     "runtime/RuntimeLauncherAssets.java": "8545eb4eeeb75a82297825c09a2975f8e61ef1a34e8a590495dcaf56a98856f7",
+     "runtime/RuntimeNativeFiles.java": "77598bd8efa0b1d625dbff2ab2f2cb7a1987472dbbbdcf2f2e11772e2c59efa6",
+     "runtime/RuntimeTemporaryDirectories.java": "8b432b53fd99ea16a130bdf8a480a8f9b8f9d35f058fa99f35af3198ca7be8a2",
+-    "runtime/RuntimeTools.java": "fd37fc7f5b7b1f8f9159a8d4a4bfa799b0e297a713bdf0fb45e7130f4a6f9d72",
++    "runtime/RuntimeTools.java": "8c292e12cd6dc0510f1e5e9bc948a8af102520d980dc1ce807e940134fc46cbb",
+     "runtime/RuntimeTrial.java": "2373e7119ed3374bdcc3195c898e73c3f01c291973a5bddc7a4de9825dfc70a9",
+     "runtime/SignedAssetMembers.java": "67b7573245ebb878b69a914bee87ede163eb2597c10c03be83e93e8fe658a252",
+     "runtime/TarGzipExtractor.java": "844a9ef7d66067b990fddd3d16601a6443aca6b598a2494b8aa129cb496e5c91",
+@@ -331,7 +332,7 @@
+     "util/PortableExportPlan.java": "39c0e37e0d91f0193073ccc2f55202271c01f1fe5327f1c81698ac65eedea5d1",
+     "util/PrivilegedContextFailure.java": "825a0a0d06a310d65f5cef67b9eef2f9c166396e6bda3dee60da61d33a05de74",
+     "util/ProcStat.java": "71706c113d57924f7e1ab2b383288e19cc3cef3428c0de672bfaaa7901f1e5c9",
+-    "util/ProcessBirthHandshake.java": "4095164f5b5a124d8b0594b0e7fcaa3bb7e02c3827405536edeb2c53496fee36",
++    "util/ProcessBirthHandshake.java": "9f128332103da0abac8728d6159dc22d962358d8618ad0ef44986ddc95e8e8f6",
+     "util/ProcessPipePoller.java": "bbd979b4e1c96b7b54ad9e2f8a60fe4b44242246d775118acfb8c7f36538f15d",
+     "util/Rc1MigrationReuse.java": "bed3470ff9d07c9be2cefa1094498bede6968ac53df8e1e7aeae4288b69682b6",
+     "util/RegenerableCachePaths.java": "1b39f83c4b366c97fa0c20bf56d79ef94291b7bef192e03658075c9fedc5b0d9",
+@@ -373,7 +374,7 @@
+     "util/WebHealthProbe.java": "74381ae8e0451af093b7eb6e0e354830b359d05cd66fc0ccaa4478d7c4ba58a5",
+     "util/WebLaunchCommand.java": "486fb063f0744b076dc7278a59b35ed05fe9b5e7e380e6bd025dff22ecdd313b",
+     "util/WebPidIdentity.java": "9bb5ce402ad59b527f83585b6723866b618ec0b78e21b9a74e73de9bc66b80a9",
+-    "util/WebPortPolicy.java": "3a5626fc9b50829c987cd8e11813814bf7bbd47a0bd978440f45c15981332bdd",
++    "util/WebPortPolicy.java": "de349a2edd789a6d6bbd4e6476e4229d615cd2799acaecf8f87bcdb1cb459c86",
+     "util/WebPortSettings.java": "bd1ff6689b1b007b35562cb5e6ecfbb646032592cdc55cfa1a87433c970ff197",
+     "util/WebProcSel.java": "cc19acc213fc5332ebd87862a5e65de96f15f20deb6b230cf85e69a2f4e50b79",
+     "util/WebRuntimeFallback.java": "cb5d5bb3a39679332a655d7d7726e691a287647883793cbdcf362e8021331b2d",
+diff --git a/app/src/main/assets/tool-block-identity-patch.json b/app/src/main/assets/tool-block-identity-patch.json
+index 62934c1..beee837 100644
+--- a/app/src/main/assets/tool-block-identity-patch.json
++++ b/app/src/main/assets/tool-block-identity-patch.json
+@@ -1,7 +1,7 @@
+ {
+   "dshVersion": "0.2.1-rc.2",
+   "module": "@deepseek-ai/dsh-llm/lib/types/assembler.js",
+-  "packageVersion": "0.2.0-rc.2",
++  "packageVersion": "0.2.1-rc.2",
+   "canonicalSourceSha256": "35a4754ab854055942b9142934c595c3e6358a717947daa2d8d89847aef988f7",
+   "patches": [
+     {
+diff --git a/app/src/main/assets/tool-dispatch-validation-patch.json b/app/src/main/assets/tool-dispatch-validation-patch.json
+index f6fc08f..d9e3edc 100644
+--- a/app/src/main/assets/tool-dispatch-validation-patch.json
++++ b/app/src/main/assets/tool-dispatch-validation-patch.json
+@@ -1,7 +1,7 @@
+ {
+   "dshVersion": "0.2.1-rc.2",
+   "module": "@deepseek-ai/dsh-agent-loop/lib/index.js",
+-  "packageVersion": "0.2.0-rc.2",
++  "packageVersion": "0.2.1-rc.2",
+   "canonicalSourceSha256": "00c4814d63f3d1e2754eb09144832d19b30499d6ea444730473f740b587948c2",
+   "patches": [
+     {
+diff --git a/app/src/main/assets/tool-history-display-patch.json b/app/src/main/assets/tool-history-display-patch.json
+index aef423a..e96cb0c 100644
+--- a/app/src/main/assets/tool-history-display-patch.json
++++ b/app/src/main/assets/tool-history-display-patch.json
+@@ -1,7 +1,7 @@
+ {
+   "dshVersion": "0.2.1-rc.2",
+   "module": "@deepseek-ai/dsh-client-ui-tool/lib/client.js",
+-  "packageVersion": "0.2.0-rc.2",
++  "packageVersion": "0.2.1-rc.2",
+   "canonicalSourceSha256": "f4f80608932832049d93037273921e2209c022deade4145efa27328311a6779b",
+   "patches": [
+     {
+diff --git a/app/src/main/assets/tool-messages-history-patch.json b/app/src/main/assets/tool-messages-history-patch.json
+index 36e4e49..1ecd136 100644
+--- a/app/src/main/assets/tool-messages-history-patch.json
++++ b/app/src/main/assets/tool-messages-history-patch.json
+@@ -1,7 +1,7 @@
+ {
+   "dshVersion": "0.2.1-rc.2",
+   "module": "@deepseek-ai/dsh-llm-deepseek/lib/index.js",
+-  "packageVersion": "0.2.0-rc.2",
++  "packageVersion": "0.2.1-rc.2",
+   "canonicalSourceSha256": "226e2047b843f954d8478207613f3e44448671c6f98f8edee77008d0fe005484",
+   "patches": [
+     {
+diff --git a/app/src/main/assets/tool-stream-identity-patch.json b/app/src/main/assets/tool-stream-identity-patch.json
+index eaf5d3b..e8b99c6 100644
+--- a/app/src/main/assets/tool-stream-identity-patch.json
++++ b/app/src/main/assets/tool-stream-identity-patch.json
+@@ -1,7 +1,7 @@
+ {
+   "dshVersion": "0.2.1-rc.2",
+   "module": "@deepseek-ai/dsh-llm-pi-ai/lib/index.js",
+-  "packageVersion": "0.2.0-rc.2",
++  "packageVersion": "0.2.1-rc.2",
+   "canonicalSourceSha256": "d46dbc30aeb3414190000e6f8aeaaf994246b5e5c651de07639f4a7e92de37ef",
+   "patches": [
+     {
+diff --git a/app/src/main/java/com/deepseekharness/app/backup/HostRuntimeDiagnostics.java b/app/src/main/java/com/deepseekharness/app/backup/HostRuntimeDiagnostics.java
+index 6a4a00c..043c746 100644
+--- a/app/src/main/java/com/deepseekharness/app/backup/HostRuntimeDiagnostics.java
++++ b/app/src/main/java/com/deepseekharness/app/backup/HostRuntimeDiagnostics.java
+@@ -65,6 +65,9 @@ public final class HostRuntimeDiagnostics {
+     "rolled-back",
+     "previous-cleaned"
+   };
++  /** 只导出本应用自己的大写错误码及其紧随的机器可读片段；自由文本消息一律丢弃。 */
++  private static final Pattern SAFE_DETAIL =
++      Pattern.compile("[A-Z][A-Z0-9_]{3,}(?::[A-Za-z0-9_=.,/:-]{0,160})?");
+   private static final Pattern CODE =
+       Pattern.compile(
+           "(?:^|: )(RUNTIME_CAPABILITY_(?:FAILED_NO_REPLAY:-?[0-9]{1,4}|TIMEOUT_NO_REPLAY|TREE_UNCONFIRMED|INPUT_CHANGED_NO_REPLAY|INTERRUPTED_NO_REPLAY))(?=$|[\\s:])");
+@@ -227,6 +230,9 @@ public final class HostRuntimeDiagnostics {
+       copyBoolean(value, out, key);
+     for (String key : List.of("checkedAt", "commandExit", "totalBytes"))
+       if (value.get(key) instanceof Long) out.put(key, value.get(key));
++    if (value.get("stage") instanceof String
++        && ((String) value.get("stage")).matches("[A-Z_]{1,24}"))
++      out.put("stage", value.get("stage"));
+     out.put(
+         "recordedClosed",
+         Boolean.TRUE.equals(value.get("ownedTreeEmpty"))
+@@ -259,6 +265,8 @@ public final class HostRuntimeDiagnostics {
+         failure.put("exceptionClass", FAILURE_CLASSES.contains(className) ? className : "other");
+         var code = CODE.matcher((String) text);
+         if (code.find()) failure.put("code", code.group(1));
++        var detail = SAFE_DETAIL.matcher(separator < 0 ? "" : ((String) text).substring(separator + 1).trim());
++        if (detail.lookingAt()) failure.put("message", SensitiveData.redact(detail.group()));
+         failures.add(failure);
+       }
+     out.put("failures", failures);
+diff --git a/app/src/main/java/com/deepseekharness/app/core/WebLifecycleController.java b/app/src/main/java/com/deepseekharness/app/core/WebLifecycleController.java
+index ade55bd..e112eb6 100644
+--- a/app/src/main/java/com/deepseekharness/app/core/WebLifecycleController.java
++++ b/app/src/main/java/com/deepseekharness/app/core/WebLifecycleController.java
+@@ -247,8 +247,11 @@ final class WebLifecycleController {
+         return false;
+       }
+       if (com.deepseekharness.app.core.MaintenanceCoordinator.pending(owner)) {
+-        if (onStatus != null)
+-          onStatus.accept(com.deepseekharness.app.util.UiText.text("上次环境维护未完成，请先到安装与修复页恢复中断维护"));
++        String blocked = com.deepseekharness.app.util.UiText.text("上次环境维护未完成，请先到安装与修复页恢复中断维护");
++        // 自动启动没有状态回调时也要留下记录，诊断页才能解释为什么没有启动。
++        Log.w("DSHA", "WEB_START_BLOCKED_PENDING_MAINTENANCE");
++        DiagnosticLog.record(ctx, "WEB_START_STOP", blocked);
++        if (onStatus != null) onStatus.accept(blocked);
+         return false;
+       }
+       if (com.deepseekharness.app.core.MaintenanceCoordinator.isEnvironmentTaskBusy()) {
+diff --git a/app/src/main/java/com/deepseekharness/app/recovery/RecoveryController.java b/app/src/main/java/com/deepseekharness/app/recovery/RecoveryController.java
+index a54c68e..fce6b3e 100644
+--- a/app/src/main/java/com/deepseekharness/app/recovery/RecoveryController.java
++++ b/app/src/main/java/com/deepseekharness/app/recovery/RecoveryController.java
+@@ -502,6 +502,20 @@ public final class RecoveryController {
+       }
+   }
+ 
++  /** 应急页显示的工具检查失败原因：固定错误码加脱敏短详情（来自来宾侧错误名与消息）。 */
++  static String agentFailure(String line, String secret, String bridgeSecret) {
++    String detail = line.length() > 27 && line.charAt(26) == ':' ? line.substring(27) : "";
++    for (String value : new String[] {secret, bridgeSecret})
++      if (value != null && value.length() > 3) detail = detail.replace(value, "***");
++    detail =
++        SensitiveData.redact(DshAuthUrl.redact(detail))
++            .replaceAll("[\\p{Cntrl}]+", " ")
++            .replaceAll("\\s+", " ")
++            .trim();
++    if (detail.length() > 300) detail = detail.substring(0, 300);
++    return detail.isEmpty() ? "RECOVERY_TOOL_CHECK_FAILED" : "RECOVERY_TOOL_CHECK_FAILED: " + detail;
++  }
++
+   private static final class Output {
+     final InputStream input;
+     final String id;
+@@ -537,7 +551,7 @@ public final class RecoveryController {
+             line.reset();
+             if (text.equals("DSHA_RECOVERY_AGENT_READY:" + id)) agentReady = true;
+             if (text.startsWith("DSHA_RECOVERY_AGENT_FAILED"))
+-              failure = "RECOVERY_TOOL_CHECK_FAILED";
++              failure = agentFailure(text, secret, bridgeSecret);
+             engineFailure |= com.deepseekharness.app.util.RuntimeEnginePolicy.engineFailure(text);
+             if (text.startsWith("[DSHA_STARTUP] ")) {
+               try {
+diff --git a/app/src/main/java/com/deepseekharness/app/recovery/RecoveryRuntime.java b/app/src/main/java/com/deepseekharness/app/recovery/RecoveryRuntime.java
+index 8b794a0..b53c4f8 100644
+--- a/app/src/main/java/com/deepseekharness/app/recovery/RecoveryRuntime.java
++++ b/app/src/main/java/com/deepseekharness/app/recovery/RecoveryRuntime.java
+@@ -446,20 +446,34 @@ public final class RecoveryRuntime {
+                 rootfs,
+                 false,
+                 com.deepseekharness.app.util.RuntimeCapabilityProbe.Kind.NODE);
+-        if (!com.deepseekharness.app.runtime.RuntimeEngineQualification.check(
+-            context,
+-            rootfs,
+-            tmp,
+-            false,
+-            fingerprint,
+-            com.deepseekharness.app.util.RuntimeCapabilityProbe.Kind.NODE,
+-            (probe, scratch) ->
+-                com.deepseekharness.app.runtime.RuntimeEngineQualification.probeBuilder(
+-                    context, candidate.runtime, rootfs, scratch, probe))) {
++        boolean qualified;
++        String unconfirmed = null;
++        try {
++          qualified =
++              com.deepseekharness.app.runtime.RuntimeEngineQualification.check(
++                  context,
++                  rootfs,
++                  tmp,
++                  false,
++                  fingerprint,
++                  com.deepseekharness.app.util.RuntimeCapabilityProbe.Kind.NODE,
++                  (probe, scratch) ->
++                      com.deepseekharness.app.runtime.RuntimeEngineQualification.probeBuilder(
++                          context, candidate.runtime, rootfs, scratch, probe));
++        } catch (IOException failure) {
++          // 应急舱没有正式用户数据且尚未派发业务；预检“未确认”不应让应急 DSH 无法启动，改用 proot 并记录原因。
++          if (!com.deepseekharness.app.runtime.ColdEngineFallback.eligible(failure)) throw failure;
++          qualified = false;
++          unconfirmed = com.deepseekharness.app.runtime.ColdEngineFallback.reason(failure);
++        }
++        if (!qualified) {
+           engine = com.deepseekharness.app.runtime.EngineSpec.select(context, engineSettings, true);
+           compatibleRetried = true;
+           recordOutcome(
+-              "CAPABILITY_FALLBACK", "bxroot -> proot; isolated probe and owned tree closed");
++              "CAPABILITY_FALLBACK",
++              unconfirmed != null
++                  ? unconfirmed
++                  : "bxroot -> proot; isolated probe and owned tree closed");
+         }
+       }
+     }
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/BoundedGuestBootRecovery.java b/app/src/main/java/com/deepseekharness/app/runtime/BoundedGuestBootRecovery.java
+index 4e088b1..5d319f3 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/BoundedGuestBootRecovery.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/BoundedGuestBootRecovery.java
+@@ -121,7 +121,8 @@ final class BoundedGuestBootRecovery {
+         throw new IOException("BOUNDED_GUEST_BOOT_RECORD_CHANGED");
+       publish(fs, journal, "checkpoint", value);
+       sync(fs, files, journal);
+-      throw new IOException("BOUNDED_GUEST_REAL_REBOOT_REQUIRED:" + id);
++      // 仅文案标记：告诉用户本次刚写入检查点；恢复安全逻辑不变。
++      throw new IOException("BOUNDED_GUEST_REAL_REBOOT_REQUIRED:" + id + ":CHECKPOINT_SAVED");
+     }
+     Checkpoint checkpoint = checkpoint(fs, journal, id);
+     if (!Arrays.equals(snapshot, checkpoint.snapshot))
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/BoundedGuestSessions.java b/app/src/main/java/com/deepseekharness/app/runtime/BoundedGuestSessions.java
+index 5c134bf..d39c176 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/BoundedGuestSessions.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/BoundedGuestSessions.java
+@@ -415,7 +415,15 @@ public final class BoundedGuestSessions {
+ 
+   private static IOException retained(List<String> blocked) {
+     String detail = "BOUNDED_GUEST_RECORDS_RETAINED:" + String.join(",", blocked);
+-    if (blocked.stream().anyMatch(value -> value.contains("BOUNDED_GUEST_REAL_REBOOT_REQUIRED")))
++    if (blocked.stream().anyMatch(value -> value.contains(":CHECKPOINT_SAVED")))
++      detail =
++          String.join(
++              "\n",
++              detail,
++              com.deepseekharness.app.util.UiText.choose(
++                  "检查点已保存，需真正重启手机后再点“恢复中断维护”；重启会断开 shell/会话，文件不丢。",
++                  "Checkpoint saved. Restart the phone for real, then tap Resume interrupted maintenance again. Restarting ends shells and sessions; files are kept."));
++    else if (blocked.stream().anyMatch(value -> value.contains("BOUNDED_GUEST_REAL_REBOOT_REQUIRED")))
+       detail =
+           String.join(
+               "\n",
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/ColdEngineFallback.java b/app/src/main/java/com/deepseekharness/app/runtime/ColdEngineFallback.java
+new file mode 100644
+index 0000000..8939dec
+--- /dev/null
++++ b/app/src/main/java/com/deepseekharness/app/runtime/ColdEngineFallback.java
+@@ -0,0 +1,41 @@
++package com.deepseekharness.app.runtime;
++
++import com.deepseekharness.app.util.SensitiveData;
++import java.io.InterruptedIOException;
++
++/** 冷安装期间 bxroot 预检未能确认时，决定是否自动改用 proot，并生成可记录的脱敏原因。 */
++public final class ColdEngineFallback {
++  /** 仅冷安装候选（尚无用户数据、未派发业务）上的预检失败可回退；中断/业务已派发不回退。 */
++  public static boolean eligible(Throwable failure) {
++    for (Throwable current = failure; current != null; current = current.getCause()) {
++      if (current instanceof InterruptedIOException || current instanceof InterruptedException)
++        return false;
++      String message = current.getMessage();
++      if (message != null
++          && (message.contains("RUNTIME_BUSINESS_STARTED_NO_ENGINE_REPLAY")
++              || message.contains("RUNTIME_ENGINE_UNAVAILABLE")
++              || message.contains("COLD_CANDIDATE")))
++        return false;
++    }
++    for (Throwable current = failure; current != null; current = current.getCause())
++      if (current instanceof java.io.IOException
++          || String.valueOf(current.getMessage()).contains("RUNTIME_CAPABILITY_UNCONFIRMED"))
++        return true;
++    return false;
++  }
++
++  public static String reason(Throwable failure) {
++    StringBuilder text = new StringBuilder("bxroot->proot after preflight failure:");
++    int depth = 0;
++    for (Throwable current = failure; current != null && depth < 4; current = current.getCause(), depth++) {
++      String message = current.getMessage();
++      text.append(depth == 0 ? " " : " <- ")
++          .append(current.getClass().getSimpleName())
++          .append(message == null ? "" : "/" + message);
++    }
++    String safe = SensitiveData.redact(text.toString()).replaceAll("[^\\x20-\\x7e]", "?");
++    return safe.length() > 700 ? safe.substring(0, 700) : safe;
++  }
++
++  private ColdEngineFallback() {}
++}
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/ColdToolsInstaller.java b/app/src/main/java/com/deepseekharness/app/runtime/ColdToolsInstaller.java
+index 43d8bc6..1896535 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/ColdToolsInstaller.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/ColdToolsInstaller.java
+@@ -177,7 +177,18 @@ final class ColdToolsInstaller {
+   private static java.util.List<com.deepseekharness.app.util.ColdInstallPlan.Mode> modes(
+       ProotBootstrap boot, boolean configured) throws IOException {
+     var settings = boot.hostPorts().settings();
+-    ContainerRuntime selected = boot.packageRuntime();
++    ContainerRuntime selected;
++    try {
++      selected = boot.packageRuntime();
++    } catch (IOException | IllegalStateException failure) {
++      // 冷安装候选尚无用户数据；bxroot 预检“未确认”不能让安装中止，改走已有的 proot 模式并记录原因。
++      if (!ColdEngineFallback.eligible(failure)) throw failure;
++      String reason = ColdEngineFallback.reason(failure);
++      android.util.Log.w("DSHA", "COLD_BXROOT_PREFLIGHT_FALLBACK " + reason, failure);
++      boot.hostPorts().record("COLD_BXROOT_PREFLIGHT_FALLBACK_PROOT", reason);
++      return com.deepseekharness.app.util.ColdInstallPlan.modes(
++          false, false, IsolatedInstallProcess.supported(boot.ctx), settings.disableProotSeccomp);
++    }
+     return com.deepseekharness.app.util.ColdInstallPlan.modes(
+         "bxroot".equals(selected.id()),
+         "bxroot".equals(selected.id()),
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/IsolatedInstallProcess.java b/app/src/main/java/com/deepseekharness/app/runtime/IsolatedInstallProcess.java
+index 91a7ef4..1870d90 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/IsolatedInstallProcess.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/IsolatedInstallProcess.java
+@@ -42,6 +42,17 @@ final class IsolatedInstallProcess extends Process implements AutoCloseable, Own
+     return system.canExecute() ? system.getAbsolutePath() : null;
+   }
+ 
++  /** 随包监督器必须实现 V2 控制协议；旧版二进制会把 --control=… 当作命令 execvp（ENOENT）。 */
++  static boolean speaksOwnedTreeV2(File launcher) {
++    try {
++      byte[] bytes = Compat.readAllBytes(launcher);
++      String text = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
++      return text.contains("READY DSHA_OWNED_TREE_V2") && text.contains("--control=");
++    } catch (IOException | RuntimeException unreadable) {
++      return false;
++    }
++  }
++
+   static String bundledLauncher(android.content.Context context) {
+     File binary = new File(context.getApplicationInfo().nativeLibraryDir, "libdsha-session.so");
+     return binary.isFile() && binary.length() > 0 ? binary.getAbsolutePath() : null;
+@@ -67,6 +78,8 @@ final class IsolatedInstallProcess extends Process implements AutoCloseable, Own
+     try {
+       String launcher = bundledLauncher(context);
+       if (launcher == null) throw new IOException("OWNED_RUNTIME_SUPERVISOR_UNAVAILABLE");
++      if (!speaksOwnedTreeV2(new File(launcher)))
++        throw new IOException("OWNED_RUNTIME_SUPERVISOR_PROTOCOL_STALE");
+       operation.nativeProtocol();
+       control = new NativeTreeControl(operation);
+       var command = new java.util.ArrayList<String>();
+@@ -89,15 +102,24 @@ final class IsolatedInstallProcess extends Process implements AutoCloseable, Own
+               launched.getInputStream(),
+               android.os.Process.myPid(),
+               () -> !ProcessTermination.exited(launched),
+-              3000);
+-      ProcessIdentity current = readIdentity(birth.pid);
+-      current =
+-          OwnedBirthEvidence.current(
+-              birth,
+-              current,
+-              !ProcessTermination.exited(launched),
+-              current == null ? NativeProcess.sessionId(birth.pid) : current.session);
+-      if (current == null) throw new IOException("PROCESS_BIRTH_RECHECK_UNCONFIRMED");
++              15_000);
++      ProcessIdentity inspected = readIdentity(birth.pid);
++      boolean alive = !ProcessTermination.exited(launched);
++      int sid = inspected == null ? NativeProcess.sessionId(birth.pid) : inspected.session;
++      ProcessIdentity current = OwnedBirthEvidence.current(birth, inspected, alive, sid);
++      if (current == null) {
++        current = OwnedBirthEvidence.uninspectable(birth, inspected, alive, sid);
++        if (current != null)
++          android.util.Log.w(
++              "DSHA",
++              "OWNED_BIRTH_INSPECTION_UNAVAILABLE "
++                  + OwnedBirthEvidence.describe(birth, inspected, alive, sid));
++      }
++      if (current == null)
++        throw new IOException(
++            "PROCESS_BIRTH_RECHECK_UNCONFIRMED:"
++                + OwnedBirthEvidence.describe(birth, inspected, alive, sid)
++                + launcherOutput(launched));
+       ready = new IsolatedInstallProcess(launched, current, null, operation);
+       ready.control = control;
+       ready.runtimeMode = target.environment().getOrDefault("DSHA_RUNTIME_ENGINE", "UNKNOWN");
+@@ -143,6 +165,23 @@ final class IsolatedInstallProcess extends Process implements AutoCloseable, Own
+     }
+   }
+ 
++  /** 启动器已写出但尚未读取的诊断字节（仅非阻塞、限长、脱敏），用于解释身份复核失败。 */
++  private static String launcherOutput(Process launched) {
++    try {
++      int available = Math.min(launched.getInputStream().available(), 160);
++      if (available <= 0) return "";
++      byte[] bytes = new byte[available];
++      int count = launched.getInputStream().read(bytes);
++      if (count <= 0) return "";
++      String text =
++          new String(bytes, 0, count, java.nio.charset.StandardCharsets.US_ASCII)
++              .replaceAll("[^\\x20-\\x7e]", "?");
++      return " out=" + com.deepseekharness.app.util.SensitiveData.redact(text);
++    } catch (IOException | RuntimeException unavailable) {
++      return "";
++    }
++  }
++
+   private IsolatedInstallProcess(
+       Process supervisor,
+       ProcessIdentity identity,
+@@ -176,11 +215,11 @@ final class IsolatedInstallProcess extends Process implements AutoCloseable, Own
+ 
+   void requireCurrentBirth() throws IOException {
+     ProcessIdentity current = readIdentity(identity.pid);
+-    if (current == null
+-        && control != null
+-        && !ProcessTermination.exited(supervisor)
+-        && NativeProcess.sessionId(identity.pid) == identity.session)
+-      throw new OwnedRuntimeSession.IdentityInspectionUnavailable(null);
++    if (current == null && control != null && !ProcessTermination.exited(supervisor)) {
++      int sid = NativeProcess.sessionId(identity.pid);
++      if (sid == identity.session || OwnedBirthEvidence.sessionUnreadable(sid))
++        throw new OwnedRuntimeSession.IdentityInspectionUnavailable(null);
++    }
+     if (!identity.sameProcess(current) || !current.ownsSession())
+       throw new IOException("OWNED_SESSION_BIRTH_CHANGED");
+     try {
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/NativeTreeControl.java b/app/src/main/java/com/deepseekharness/app/runtime/NativeTreeControl.java
+index 3352296..ec3cd15 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/NativeTreeControl.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/NativeTreeControl.java
+@@ -55,6 +55,28 @@ public final class NativeTreeControl implements AutoCloseable {
+     return failure == null ? unknown : failure.getMessage();
+   }
+ 
++  static final long ACCEPT_WAIT_MS = 15_000;
++  static final int READY_WAIT_MS = 15_000;
++
++  /** 区分“等待超时”和“接收失败”，并附带脱敏后的异常类与消息，便于诊断回执定位真实原因。 */
++  static IOException acceptFailure(Throwable error, long waitedMs) {
++    Throwable root = error instanceof ExecutionException && error.getCause() != null
++        ? error.getCause()
++        : error;
++    if (error instanceof TimeoutException)
++      return new IOException(
++          "OWNED_CONTROL_ACCEPT_TIMEOUT:waited=" + waitedMs + "ms", error);
++    return new IOException("OWNED_CONTROL_ACCEPT_RECEIVE_FAILED:" + describe(root), error);
++  }
++
++  static String describe(Throwable error) {
++    String message = error.getMessage();
++    String text = error.getClass().getName() + (message == null ? "" : "/" + message);
++    text = com.deepseekharness.app.util.SensitiveData.redact(text);
++    text = text.replaceAll("[^\\x20-\\x7e]", "?");
++    return text.length() > 200 ? text.substring(0, 200) : text;
++  }
++
+   void accept(ProcessIdentity identity, java.util.function.BooleanSupplier rawAlive)
+       throws IOException {
+     ExecutorService accepting =
+@@ -66,7 +88,7 @@ public final class NativeTreeControl implements AutoCloseable {
+             });
+     Future<LocalSocket> accepted = accepting.submit(server::accept);
+     try {
+-      socket = accepted.get(3000, TimeUnit.MILLISECONDS);
++      socket = accepted.get(ACCEPT_WAIT_MS, TimeUnit.MILLISECONDS);
+       var peer = socket.getPeerCredentials();
+       if (!OwnedBirthEvidence.peer(
+           identity,
+@@ -74,12 +96,23 @@ public final class NativeTreeControl implements AutoCloseable {
+           peer.getUid(),
+           android.os.Process.myUid(),
+           rawAlive.getAsBoolean())) throw new IOException("OWNED_CONTROL_PEER_UNCONFIRMED");
+-      socket.setSoTimeout(3000);
++      socket.setSoTimeout(READY_WAIT_MS);
+       BufferedReader reader =
+           new BufferedReader(
+               new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
+-      if (!"READY DSHA_OWNED_TREE_V2".equals(readLine(reader)))
+-        throw new IOException("OWNED_CONTROL_PROTOCOL");
++      String ready;
++      try {
++        ready = readLine(reader);
++      } catch (java.net.SocketTimeoutException timeout) {
++        throw new IOException("OWNED_CONTROL_READY_TIMEOUT:waited=" + READY_WAIT_MS + "ms", timeout);
++      } catch (IOException failed) {
++        if (failed.getMessage() != null && failed.getMessage().startsWith("OWNED_CONTROL_"))
++          throw failed;
++        throw new IOException("OWNED_CONTROL_READY_RECEIVE_FAILED:" + describe(failed), failed);
++      }
++      if (!"READY DSHA_OWNED_TREE_V2".equals(ready))
++        throw new IOException(
++            "OWNED_CONTROL_PROTOCOL:" + (ready == null ? "EOF" : describe(new IOException(ready))));
+       socket.setSoTimeout(0);
+       // 持久出生身份先于 START；这是唯一允许 guest 创建的通道。
+       if (record != null) record.beforeLaunch(identity);
+@@ -94,7 +127,7 @@ public final class NativeTreeControl implements AutoCloseable {
+       Thread.currentThread().interrupt();
+       throw new IOException("OWNED_CONTROL_INTERRUPTED", interrupted);
+     } catch (ExecutionException | TimeoutException error) {
+-      throw new IOException("OWNED_CONTROL_ACCEPT_UNCONFIRMED", error);
++      throw acceptFailure(error, ACCEPT_WAIT_MS);
+     } finally {
+       accepting.shutdownNow();
+       server.close();
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/OwnedBirthEvidence.java b/app/src/main/java/com/deepseekharness/app/runtime/OwnedBirthEvidence.java
+index 195b524..b2c1b6b 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/OwnedBirthEvidence.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/OwnedBirthEvidence.java
+@@ -14,6 +14,48 @@ final class OwnedBirthEvidence {
+     return sid == born.session ? born : null;
+   }
+ 
++  /**
++   * 部分 ROM（如 OnePlus/ColorOS 15）同时拒读子进程 /proc/&lt;pid&gt;/stat 与 getsid(SELinux getsession)。
++   * 出生行由本次私有管道从监督器自身 /proc/self/stat 读出（父进程为本进程、会话领导、未退出），
++   * 且随后 accept 仍强制核对控制套接字 SO_PEERCRED 的 pid/uid；此时“无法检查”不等于“身份错误”。
++   * ESRCH/EINVAL 表示进程不存在或参数无效，仍然拒绝。
++   */
++  static ProcessIdentity uninspectable(
++      ProcessIdentity born, ProcessIdentity inspected, boolean rawAlive, int sid) {
++    if (born == null || inspected != null || !rawAlive || !born.ownsSession() || born.exited())
++      return null;
++    return sid < 0 && sid != -ESRCH && sid != -EINVAL ? born : null;
++  }
++
++  static boolean sessionUnreadable(int sid) {
++    return sid < 0 && sid != -ESRCH && sid != -EINVAL;
++  }
++
++  static String describe(ProcessIdentity born, ProcessIdentity inspected, boolean rawAlive, int sid) {
++    return "proc="
++        + (inspected == null
++            ? "unreadable"
++            : "pid"
++                + inspected.pid
++                + "/ppid"
++                + inspected.parent
++                + "/pgid"
++                + inspected.group
++                + "/sid"
++                + inspected.session
++                + "/state"
++                + inspected.state
++                + "/same="
++                + (born != null && born.sameProcess(inspected)))
++        + " getsid="
++        + sid
++        + " alive="
++        + rawAlive
++        + (born == null ? "" : " birth=pid" + born.pid + "/sid" + born.session);
++  }
++
++  private static final int ESRCH = 3, EINVAL = 22;
++
+   static boolean peer(ProcessIdentity born, int pid, int uid, int appUid, boolean rawAlive) {
+     return born != null
+         && rawAlive
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/RecoveryToolchain.java b/app/src/main/java/com/deepseekharness/app/runtime/RecoveryToolchain.java
+index 1e0e86a..b4bcd72 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/RecoveryToolchain.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/RecoveryToolchain.java
+@@ -130,7 +130,13 @@ final class RecoveryToolchain {
+         throw new IOException(UiText.text("个人数据目录无效，已停止操作"));
+       ContainerRuntime runtime = ports.engine(context, false).runtime;
+       var independent = new RuntimeLauncher(context, root, root.getParentFile(), lib, tmp, ports);
+-      runtime = independent.preflight(runtime, false);
++      try {
++        runtime = independent.preflight(runtime, false);
++      } catch (IOException failure) {
++        if (!"bxroot".equals(runtime.id()) || !ColdEngineFallback.eligible(failure)) throw failure;
++        ports.record("RECOVERY_TOOLCHAIN_BXROOT_FALLBACK_PROOT", ColdEngineFallback.reason(failure));
++        runtime = ports.engine(context, true).runtime;
++      }
+       List<String> argv = runtime.baseArgv(root, false, null);
+       launcher.bindPreloads(argv);
+       // 源数据单独绑定；Bash、glibc、Python 始终来自签名工具根。
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/RuntimeEngineQualification.java b/app/src/main/java/com/deepseekharness/app/runtime/RuntimeEngineQualification.java
+index 7d9a2ad..4857cc2 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/RuntimeEngineQualification.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/RuntimeEngineQualification.java
+@@ -164,6 +164,7 @@ public final class RuntimeEngineQualification {
+     BoundedProcessRunner.Result result = null;
+     Throwable primary = null;
+     String outcome = "UNCONFIRMED";
++    String[] stage = {"PREPARE"};
+     var fs = new AndroidBackupFileSystem();
+     File work = fs.child(context.getFilesDir().getCanonicalFile(), "runtime-capability-work");
+     if (fs.stat(work).type.equals("MISSING")) fs.directory(work);
+@@ -171,18 +172,21 @@ public final class RuntimeEngineQualification {
+     fs.directory(scratch);
+     boolean closed = false;
+     try {
+-      process =
+-          OwnedRuntimeSession.start(
+-              builder.build(
+-                  packages ? RuntimeEngineProbe.packages() : RuntimeCapabilityProbe.command(kind),
+-                  scratch),
+-              tmp,
+-              context);
++      stage[0] = "BUILD";
++      var target =
++          builder.build(
++              packages ? RuntimeEngineProbe.packages() : RuntimeCapabilityProbe.command(kind),
++              scratch);
++      stage[0] = "SESSION_START";
++      process = OwnedRuntimeSession.start(target, tmp, context);
++      stage[0] = "COLLECT";
+       result = BoundedProcessRunner.collect(process, 60_000, 32768, Compat::destroy);
+       if (result.timedOut) throw new IOException("RUNTIME_CAPABILITY_TIMEOUT_NO_REPLAY");
++      stage[0] = "TREE_EXIT";
+       if (!process.confirmedTreeExit())
+         throw new IOException("RUNTIME_CAPABILITY_TREE_UNCONFIRMED");
+       closed = true;
++      stage[0] = "VERIFY";
+       if (!fingerprint.equals(fingerprint(context, root, packages, kind)))
+         throw new IOException("RUNTIME_CAPABILITY_INPUT_CHANGED_NO_REPLAY");
+       String marker =
+@@ -197,6 +201,7 @@ public final class RuntimeEngineQualification {
+       if (!ready && !unsupported)
+         throw new IOException("RUNTIME_CAPABILITY_FAILED_NO_REPLAY:" + result.exitCode);
+       outcome = ready ? "READY" : "UNSUPPORTED";
++      stage[0] = "DONE";
+       return ready;
+     } catch (InterruptedException cancelled) {
+       Thread.currentThread().interrupt();
+@@ -213,6 +218,7 @@ public final class RuntimeEngineQualification {
+             fs.child(context.getFilesDir().getCanonicalFile(), "runtime-capability-receipts");
+         if (fs.stat(receipts).type.equals("MISSING")) fs.directory(receipts);
+         var diagnostic = diagnostic(fingerprint, kind, packages, outcome, closed, result, primary);
++        diagnostic.put("stage", stage[0]);
+         if (process != null) diagnostic.put("sessionRecord", process.recordId());
+         fs.atomic(receipts, scratch.getName() + ".json", BackupJson.write(diagnostic, 65536));
+       } catch (IOException | RuntimeException failed) {
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/RuntimeExecution.java b/app/src/main/java/com/deepseekharness/app/runtime/RuntimeExecution.java
+index de1b473..3878d21 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/RuntimeExecution.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/RuntimeExecution.java
+@@ -60,7 +60,11 @@ final class RuntimeExecution {
+       try {
+         return launcher.preflight(selected.runtime, false);
+       } catch (IOException failure) {
+-        throw new IllegalStateException("RUNTIME_CAPABILITY_UNCONFIRMED", failure);
++        throw new IllegalStateException(
++            "RUNTIME_CAPABILITY_UNCONFIRMED: "
++                + SensitiveData.redact(String.valueOf(failure.getMessage()))
++                    .replaceAll("[^\\x20-\\x7e]", "?"),
++            failure);
+       }
+     }
+     return selected.runtime;
+diff --git a/app/src/main/java/com/deepseekharness/app/runtime/RuntimeTools.java b/app/src/main/java/com/deepseekharness/app/runtime/RuntimeTools.java
+index 87a29e4..d5baa28 100644
+--- a/app/src/main/java/com/deepseekharness/app/runtime/RuntimeTools.java
++++ b/app/src/main/java/com/deepseekharness/app/runtime/RuntimeTools.java
+@@ -398,11 +398,10 @@ final class RuntimeTools {
+       throw new IOException("LAN_SETTINGS_MODULE_PATH");
+     String source = Compat.readAll(module);
+     try {
+-      String patched =
+-          com.deepseekharness.app.util.ExactTextPatch.apply(
+-              source,
+-              "const persistence = ctx.remote.$host.isLoopback ? \"host\" : \"memory\";",
+-              "const persistence = \"host\"; // DSHA patch: LAN 代理场景强制 host 持久化");
++      String patched = com.deepseekharness.app.util.LanSettingsPatch.apply(source);
++      if (!com.deepseekharness.app.util.LanSettingsPatch.required(source))
++        RuntimeHostPorts.fromOwner(context.getApplicationContext())
++            .record("LAN_SETTINGS_PATCH_NOT_NEEDED", "upstream has no loopback persistence gate");
+       preparedFiles.add(module);
+       if (!source.equals(patched))
+         writeIfChanged(
+diff --git a/app/src/main/java/com/deepseekharness/app/util/LanSettingsPatch.java b/app/src/main/java/com/deepseekharness/app/util/LanSettingsPatch.java
+new file mode 100644
+index 0000000..8d30c5a
+--- /dev/null
++++ b/app/src/main/java/com/deepseekharness/app/util/LanSettingsPatch.java
+@@ -0,0 +1,26 @@
++package com.deepseekharness.app.util;
++
++/**
++ * 局域网代理的设置持久化补丁。dsh 0.2.0-rc.2 用 isLoopback 决定持久化位置，需要精确补丁；
++ * 0.2.1-rc.2 起上游已重构为始终经 remote.settings 写入 Host，锚点不再存在，无需补丁。
++ */
++public final class LanSettingsPatch {
++  private LanSettingsPatch() {}
++
++  public static final String BEFORE =
++      "const persistence = ctx.remote.$host.isLoopback ? \"host\" : \"memory\";";
++  public static final String AFTER =
++      "const persistence = \"host\"; // DSHA patch: LAN 代理场景强制 host 持久化";
++
++  /** 返回补丁后的文本；上游已无该逻辑时原样返回。出现 isLoopback 判定但形态不符时仍拒绝猜测。 */
++  public static String apply(String source) {
++    if (source.contains(BEFORE) || source.contains(AFTER))
++      return ExactTextPatch.apply(source, BEFORE, AFTER);
++    if (source.contains("isLoopback")) return ExactTextPatch.apply(source, BEFORE, AFTER);
++    return source;
++  }
++
++  public static boolean required(String source) {
++    return source.contains(BEFORE) || source.contains(AFTER);
++  }
++}
+diff --git a/app/src/main/java/com/deepseekharness/app/util/ProcessBirthHandshake.java b/app/src/main/java/com/deepseekharness/app/util/ProcessBirthHandshake.java
+index 38eb4c9..43b7998 100644
+--- a/app/src/main/java/com/deepseekharness/app/util/ProcessBirthHandshake.java
++++ b/app/src/main/java/com/deepseekharness/app/util/ProcessBirthHandshake.java
+@@ -20,19 +20,28 @@ public final class ProcessBirthHandshake {
+     while (System.nanoTime() - started < budget) {
+       while (input.available() > 0) {
+         int value = input.read();
+-        if (value < 0) throw new IOException("PROCESS_BIRTH_HANDSHAKE_EOF");
++        if (value < 0) throw new IOException("PROCESS_BIRTH_HANDSHAKE_EOF:" + safe(line));
+         if (value == '\n') {
+           ProcessIdentity identity = parse(line.toString(StandardCharsets.US_ASCII.name()), owner);
+-          if (identity == null) throw new IOException("PROCESS_BIRTH_HANDSHAKE_INVALID");
++          if (identity == null)
++            throw new IOException("PROCESS_BIRTH_HANDSHAKE_INVALID:" + safe(line));
+           return identity;
+         }
+         if (line.size() >= LIMIT) throw new IOException("PROCESS_BIRTH_HANDSHAKE_LIMIT");
+         line.write(value);
+       }
+-      if (!running.getAsBoolean()) throw new IOException("PROCESS_BIRTH_HANDSHAKE_EXITED");
++      if (!running.getAsBoolean())
++        throw new IOException("PROCESS_BIRTH_HANDSHAKE_EXITED:" + safe(line));
+       Thread.sleep(5);
+     }
+-    throw new IOException("PROCESS_BIRTH_HANDSHAKE_TIMEOUT");
++    throw new IOException("PROCESS_BIRTH_HANDSHAKE_TIMEOUT:" + timeoutMs + "ms:" + safe(line));
++  }
++
++  /** 启动器在握手前的 stderr（如 DSHA_SESSION_*）原样有助定位；脱敏、去控制字符并限长。 */
++  static String safe(ByteArrayOutputStream line) {
++    String text = new String(line.toByteArray(), StandardCharsets.US_ASCII).replaceAll("[^\\x20-\\x7e]", "?");
++    text = SensitiveData.redact(text);
++    return text.length() > 160 ? text.substring(0, 160) : text;
+   }
+ 
+   public static ProcessIdentity parse(String line, int owner) {
+diff --git a/app/src/main/java/com/deepseekharness/app/util/WebPortPolicy.java b/app/src/main/java/com/deepseekharness/app/util/WebPortPolicy.java
+index 45af8e9..75ab40e 100644
+--- a/app/src/main/java/com/deepseekharness/app/util/WebPortPolicy.java
++++ b/app/src/main/java/com/deepseekharness/app/util/WebPortPolicy.java
+@@ -64,16 +64,29 @@ public final class WebPortPolicy {
+     return port == 3081 || port == 3090;
+   }
+ 
++  interface Binder {
++    void bind(int port) throws IOException;
++  }
++
+   public static boolean available(int port) throws IOException {
+-    try (ServerSocket socket = new ServerSocket()) {
+-      socket.setReuseAddress(true);
+-      socket.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 1);
++    return available(
++        port,
++        value -> {
++          try (ServerSocket socket = new ServerSocket()) {
++            socket.setReuseAddress(true);
++            socket.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), value), 1);
++          }
++        });
++  }
++
++  static boolean available(int port, Binder binder) throws IOException {
++    try {
++      binder.bind(port);
+       return true;
+     } catch (BindException error) {
+-      String message = String.valueOf(error.getMessage()).toLowerCase(java.util.Locale.ROOT);
+-      if (message.contains("eaddrinuse") || message.contains("address already in use"))
+-        return false;
+-      throw error;
++      // 探测只是挑端口：EADDRINUSE、EPERM（部分 ROM/SELinux 对特定端口拒绝 bind）等任何绑定失败
++      // 都视为“该端口不可用”，由 choose() 回退到动态端口，不能让探测错误中止启动。
++      return false;
+     }
+   }
+ 
+diff --git a/app/src/test/java/com/deepseekharness/app/backup/HostRuntimeDiagnosticsTest.java b/app/src/test/java/com/deepseekharness/app/backup/HostRuntimeDiagnosticsTest.java
+index 308f1c3..d0688da 100644
+--- a/app/src/test/java/com/deepseekharness/app/backup/HostRuntimeDiagnosticsTest.java
++++ b/app/src/test/java/com/deepseekharness/app/backup/HostRuntimeDiagnosticsTest.java
+@@ -98,6 +98,24 @@ public class HostRuntimeDiagnosticsTest {
+     assertFalse(output.contains("private-user-message"));
+   }
+ 
++  @Test
++  public void ownedCodeDetailIsExportedButFreeTextIsNot() throws Exception {
++    File files = root();
++    var value = receipt();
++    value.put("stage", "SESSION_START");
++    value.put(
++        "failure",
++        List.of(
++            "java.io.IOException: PROCESS_BIRTH_HANDSHAKE_INVALID:DSHA_SESSION_SETSID private-body",
++            "java.io.IOException: free text private-user-message"));
++    receipt(files, value);
++    String output = collect(files);
++    assertTrue(output, output.contains("PROCESS_BIRTH_HANDSHAKE_INVALID:DSHA_SESSION_SETSID"));
++    assertTrue(output.contains("SESSION_START"));
++    assertFalse(output.contains("private-body"));
++    assertFalse(output.contains("private-user-message"));
++  }
++
+   @Test
+   public void legacyAndMissingReceiptsDoNotInventHistoricalFailureOrClosure() throws Exception {
+     File files = root();
+diff --git a/app/src/test/java/com/deepseekharness/app/recovery/RecoveryAgentFailureTest.java b/app/src/test/java/com/deepseekharness/app/recovery/RecoveryAgentFailureTest.java
+new file mode 100644
+index 0000000..f65b401
+--- /dev/null
++++ b/app/src/test/java/com/deepseekharness/app/recovery/RecoveryAgentFailureTest.java
+@@ -0,0 +1,31 @@
++package com.deepseekharness.app.recovery;
++
++import static org.junit.Assert.assertEquals;
++import static org.junit.Assert.assertFalse;
++import static org.junit.Assert.assertTrue;
++
++import org.junit.Test;
++
++public class RecoveryAgentFailureTest {
++  @Test
++  public void bareMarkerKeepsLegacyCode() {
++    assertEquals(
++        "RECOVERY_TOOL_CHECK_FAILED",
++        RecoveryController.agentFailure("DSHA_RECOVERY_AGENT_FAILED", "", ""));
++  }
++
++  @Test
++  public void detailIsSanitizedTruncatedAndKeepsErrorCodeParseable() {
++    String token = "a".repeat(64);
++    String line =
++        "DSHA_RECOVERY_AGENT_FAILED:Error: RECOVERY_PRESET_ROSTER "
++            + token
++            + "\u0001 "
++            + "x".repeat(600);
++    String value = RecoveryController.agentFailure(line, token, token);
++    assertTrue(value, value.startsWith("RECOVERY_TOOL_CHECK_FAILED: Error: RECOVERY_PRESET_ROSTER"));
++    assertFalse(value.contains(token));
++    assertTrue(value.length() <= "RECOVERY_TOOL_CHECK_FAILED: ".length() + 300);
++    assertEquals("RECOVERY_TOOL_CHECK_FAILED", value.split("[:\\s]", 2)[0]);
++  }
++}
+diff --git a/app/src/test/java/com/deepseekharness/app/runtime/ColdEngineFallbackTest.java b/app/src/test/java/com/deepseekharness/app/runtime/ColdEngineFallbackTest.java
+new file mode 100644
+index 0000000..060926f
+--- /dev/null
++++ b/app/src/test/java/com/deepseekharness/app/runtime/ColdEngineFallbackTest.java
+@@ -0,0 +1,35 @@
++package com.deepseekharness.app.runtime;
++
++import static org.junit.Assert.*;
++
++import java.io.IOException;
++import java.io.InterruptedIOException;
++import org.junit.Test;
++
++public class ColdEngineFallbackTest {
++  @Test
++  public void preflightUnconfirmedFallsBackAndRecordsSanitizedReason() {
++    var failure =
++        new IllegalStateException(
++            "RUNTIME_CAPABILITY_UNCONFIRMED: OWNED_CONTROL_ACCEPT_TIMEOUT:waited=15000ms",
++            new IOException("OWNED_CONTROL_ACCEPT_TIMEOUT:waited=15000ms"));
++    assertTrue(ColdEngineFallback.eligible(failure));
++    String reason = ColdEngineFallback.reason(failure);
++    assertTrue(reason, reason.startsWith("bxroot->proot after preflight failure:"));
++    assertTrue(reason, reason.contains("OWNED_CONTROL_ACCEPT_TIMEOUT"));
++    assertTrue(reason.length() <= 700);
++  }
++
++  @Test
++  public void interruptionBusinessStartAndApkInputFailuresDoNotFallBack() {
++    assertFalse(ColdEngineFallback.eligible(new InterruptedIOException("CANCELLED")));
++    assertFalse(
++        ColdEngineFallback.eligible(
++            new IllegalStateException("RUNTIME_BUSINESS_STARTED_NO_ENGINE_REPLAY")));
++    assertFalse(
++        ColdEngineFallback.eligible(
++            new IllegalStateException(
++                "RUNTIME_ENGINE_UNAVAILABLE: bxroot", new IOException("BXROOT_NATIVE_HASH_MISMATCH"))));
++    assertFalse(ColdEngineFallback.eligible(new IllegalStateException("other")));
++  }
++}
+diff --git a/app/src/test/java/com/deepseekharness/app/runtime/NativeTreeControlFailureTest.java b/app/src/test/java/com/deepseekharness/app/runtime/NativeTreeControlFailureTest.java
+new file mode 100644
+index 0000000..fcfd50f
+--- /dev/null
++++ b/app/src/test/java/com/deepseekharness/app/runtime/NativeTreeControlFailureTest.java
+@@ -0,0 +1,29 @@
++package com.deepseekharness.app.runtime;
++
++import static org.junit.Assert.*;
++
++import java.io.IOException;
++import java.util.concurrent.ExecutionException;
++import java.util.concurrent.TimeoutException;
++import org.junit.Test;
++
++public class NativeTreeControlFailureTest {
++  @Test
++  public void acceptWaitIsFifteenSeconds() {
++    assertEquals(15_000, NativeTreeControl.ACCEPT_WAIT_MS);
++    assertEquals(15_000, NativeTreeControl.READY_WAIT_MS);
++  }
++
++  @Test
++  public void timeoutAndReceiveFailureAreDistinguished() {
++    IOException timeout =
++        NativeTreeControl.acceptFailure(new TimeoutException(), NativeTreeControl.ACCEPT_WAIT_MS);
++    assertEquals("OWNED_CONTROL_ACCEPT_TIMEOUT:waited=15000ms", timeout.getMessage());
++    IOException receive =
++        NativeTreeControl.acceptFailure(
++            new ExecutionException(new IOException("accept failed: EBADF\nsecret")), 15000);
++    assertTrue(receive.getMessage(), receive.getMessage().startsWith("OWNED_CONTROL_ACCEPT_RECEIVE_FAILED:java.io.IOException/accept failed: EBADF?"));
++    assertFalse(receive.getMessage().contains("TIMEOUT"));
++    assertTrue(receive.getCause() instanceof ExecutionException);
++  }
++}
+diff --git a/app/src/test/java/com/deepseekharness/app/runtime/OwnedBirthUninspectableTest.java b/app/src/test/java/com/deepseekharness/app/runtime/OwnedBirthUninspectableTest.java
+new file mode 100644
+index 0000000..04983ca
+--- /dev/null
++++ b/app/src/test/java/com/deepseekharness/app/runtime/OwnedBirthUninspectableTest.java
+@@ -0,0 +1,42 @@
++package com.deepseekharness.app.runtime;
++
++import static org.junit.Assert.*;
++
++import com.deepseekharness.app.util.ProcessBirthHandshake;
++import com.deepseekharness.app.util.ProcessIdentity;
++import org.junit.Test;
++
++public class OwnedBirthUninspectableTest {
++  private static ProcessIdentity born() {
++    String stat = "321 (signed session) S 99 321 321 " + "0 ".repeat(15) + "123";
++    return ProcessBirthHandshake.parse(ProcessBirthHandshake.PREFIX + stat, 99);
++  }
++
++  @Test
++  public void deniedProcAndGetsidFallBackToPrivatePipeBirthOnlyWhileAlive() {
++    var born = born();
++    assertNotNull(born);
++    // EACCES(-13)/EPERM(-1): ROM 拒读，仍由 SO_PEERCRED 把关
++    assertSame(born, OwnedBirthEvidence.uninspectable(born, null, true, -13));
++    assertSame(born, OwnedBirthEvidence.uninspectable(born, null, true, -1));
++    // 已退出、进程不存在、参数无效、读到了 /proc 却不一致：一律不信任
++    assertNull(OwnedBirthEvidence.uninspectable(born, null, false, -13));
++    assertNull(OwnedBirthEvidence.uninspectable(born, null, true, -3));
++    assertNull(OwnedBirthEvidence.uninspectable(born, null, true, -22));
++    assertNull(OwnedBirthEvidence.uninspectable(born, null, true, 999));
++    assertNull(OwnedBirthEvidence.uninspectable(born, born, true, -13));
++    assertNull(OwnedBirthEvidence.uninspectable(null, null, true, -13));
++    // 正常路径不变
++    assertSame(born, OwnedBirthEvidence.current(born, null, true, 321));
++    assertNull(OwnedBirthEvidence.current(born, null, true, -13));
++  }
++
++  @Test
++  public void describeExplainsRecheckFailure() {
++    String text = OwnedBirthEvidence.describe(born(), null, true, -13);
++    assertEquals("proc=unreadable getsid=-13 alive=true birth=pid321/sid321", text);
++    assertTrue(OwnedBirthEvidence.sessionUnreadable(-13));
++    assertFalse(OwnedBirthEvidence.sessionUnreadable(-3));
++    assertFalse(OwnedBirthEvidence.sessionUnreadable(321));
++  }
++}
+diff --git a/app/src/test/java/com/deepseekharness/app/runtime/SessionLauncherBinaryTest.java b/app/src/test/java/com/deepseekharness/app/runtime/SessionLauncherBinaryTest.java
+new file mode 100644
+index 0000000..35023b5
+--- /dev/null
++++ b/app/src/test/java/com/deepseekharness/app/runtime/SessionLauncherBinaryTest.java
+@@ -0,0 +1,42 @@
++package com.deepseekharness.app.runtime;
++
++import static org.junit.Assert.*;
++
++import java.io.File;
++import java.nio.charset.StandardCharsets;
++import java.nio.file.Files;
++import org.junit.Test;
++
++/** 回归：fix1/fix2 随包的 libdsha-session.so 是旧版（无 V2 控制协议），导致 execvp("--control=…") ENOENT。 */
++public class SessionLauncherBinaryTest {
++  private static File binary() {
++    for (String base : new String[] {"src/main", "app/src/main"}) {
++      File file = new File(base, "jniLibs/arm64-v8a/libdsha-session.so");
++      if (file.isFile()) return file;
++    }
++    fail("libdsha-session.so missing");
++    return null;
++  }
++
++  @Test
++  public void shippedSupervisorImplementsProtocolJavaExpects() throws Exception {
++    File file = binary();
++    assertTrue(IsolatedInstallProcess.speaksOwnedTreeV2(file));
++    String text = new String(Files.readAllBytes(file.toPath()), StandardCharsets.ISO_8859_1);
++    for (String marker :
++        new String[] {
++          "READY DSHA_OWNED_TREE_V2", "STARTED", "COMMIT", "OWNED_TREE_EMPTY ECHILD",
++          "COMMAND_EXITED", "NO_GUEST", "--stop-signal=", "--pty-existing-session", "--control="
++        })
++      assertTrue(marker, text.contains(marker));
++  }
++
++  @Test
++  public void staleLauncherIsRejected() throws Exception {
++    File stale = File.createTempFile("stale-session", ".so");
++    stale.deleteOnExit();
++    Files.write(stale.toPath(), "DSHA_SESSION_STAT_V1 --birth-handshake DSHA_SESSION_EXEC".getBytes(StandardCharsets.US_ASCII));
++    assertFalse(IsolatedInstallProcess.speaksOwnedTreeV2(stale));
++    assertFalse(IsolatedInstallProcess.speaksOwnedTreeV2(new File("/nonexistent/launcher")));
++  }
++}
+diff --git a/app/src/test/java/com/deepseekharness/app/util/LanSettingsPatchTest.java b/app/src/test/java/com/deepseekharness/app/util/LanSettingsPatchTest.java
+new file mode 100644
+index 0000000..e2b0af7
+--- /dev/null
++++ b/app/src/test/java/com/deepseekharness/app/util/LanSettingsPatchTest.java
+@@ -0,0 +1,40 @@
++package com.deepseekharness.app.util;
++
++import static org.junit.Assert.*;
++
++import java.io.IOException;
++import java.io.InputStream;
++import java.nio.charset.StandardCharsets;
++import org.junit.Test;
++
++public class LanSettingsPatchTest {
++  private static final String LEGACY =
++      "class X {\n\t\tconst persistence = ctx.remote.$host.isLoopback ? \"host\" : \"memory\";\n}\n";
++
++  @Test
++  public void realDsh021Rc2SettingsModuleNeedsNoPatchAndIsUntouched() throws IOException {
++    String source;
++    try (InputStream in =
++        getClass()
++            .getResourceAsStream(
++                "/dsh-fixtures/0.2.1-rc.2/dsh-client-ui-settings-client.js")) {
++      assertNotNull(in);
++      source = new String(in.readAllBytes(), StandardCharsets.UTF_8);
++    }
++    assertFalse(LanSettingsPatch.required(source));
++    assertSame(source, LanSettingsPatch.apply(source));
++  }
++
++  @Test
++  public void legacy020Rc2AnchorIsStillPatchedIdempotently() {
++    String patched = LanSettingsPatch.apply(LEGACY);
++    assertTrue(patched.contains(LanSettingsPatch.AFTER));
++    assertFalse(patched.contains("isLoopback"));
++    assertEquals(patched, LanSettingsPatch.apply(patched));
++  }
++
++  @Test(expected = IllegalArgumentException.class)
++  public void unknownLoopbackGateStillRefusesToGuess() {
++    LanSettingsPatch.apply("const persistence = ctx.remote.$host.isLoopback ? 1 : 2;");
++  }
++}
+diff --git a/app/src/test/java/com/deepseekharness/app/util/ProcessBirthHandshakeTest.java b/app/src/test/java/com/deepseekharness/app/util/ProcessBirthHandshakeTest.java
+index 9b100b4..859f936 100644
+--- a/app/src/test/java/com/deepseekharness/app/util/ProcessBirthHandshakeTest.java
++++ b/app/src/test/java/com/deepseekharness/app/util/ProcessBirthHandshakeTest.java
+@@ -52,4 +52,27 @@ public class ProcessBirthHandshakeTest {
+         () ->
+             ProcessBirthHandshake.read(new ByteArrayInputStream(new byte[0]), 99, () -> true, 20));
+   }
++
++  @Test
++  public void failuresCarrySanitizedLauncherOutput() throws Exception {
++    IOException invalid =
++        assertThrows(
++            IOException.class,
++            () ->
++                ProcessBirthHandshake.read(
++                    new ByteArrayInputStream("DSHA_SESSION_SETSID\n".getBytes()), 99, () -> true, 50));
++    assertTrue(invalid.getMessage(), invalid.getMessage().contains("PROCESS_BIRTH_HANDSHAKE_INVALID:DSHA_SESSION_SETSID"));
++    IOException exited =
++        assertThrows(
++            IOException.class,
++            () ->
++                ProcessBirthHandshake.read(
++                    new ByteArrayInputStream("partial\u0001".getBytes()), 99, () -> false, 50));
++    assertTrue(exited.getMessage(), exited.getMessage().contains("PROCESS_BIRTH_HANDSHAKE_EXITED:partial?"));
++    IOException silent =
++        assertThrows(
++            IOException.class,
++            () -> ProcessBirthHandshake.read(new ByteArrayInputStream(new byte[0]), 99, () -> true, 20));
++    assertTrue(silent.getMessage(), silent.getMessage().startsWith("PROCESS_BIRTH_HANDSHAKE_TIMEOUT:20ms"));
++  }
+ }
+diff --git a/app/src/test/java/com/deepseekharness/app/util/WebPortPolicyTest.java b/app/src/test/java/com/deepseekharness/app/util/WebPortPolicyTest.java
+index f4b91bd..e615c2c 100644
+--- a/app/src/test/java/com/deepseekharness/app/util/WebPortPolicyTest.java
++++ b/app/src/test/java/com/deepseekharness/app/util/WebPortPolicyTest.java
+@@ -117,4 +117,38 @@ public class WebPortPolicyTest {
+     assertTrue(trace.snapshot(20, "en").log.contains("Web port in use: 3080"));
+     assertFalse(trace.snapshot(20, "en").issues.containsKey("@deepseek-ai/dsh-web-app"));
+   }
++
++  @Test
++  public void anyBindExceptionIncludingEpermMeansUnavailableAndFallsBackToDynamicPort()
++      throws Exception {
++    java.net.BindException eperm = new java.net.BindException("bind failed: EPERM (Operation not permitted)");
++    assertFalse(
++        WebPortPolicy.available(
++            40607,
++            port -> {
++              throw eperm;
++            }));
++    WebPortPolicy.Choice choice =
++        WebPortPolicy.choose(
++            0,
++            40607,
++            port ->
++                WebPortPolicy.available(
++                    port,
++                    value -> {
++                      throw eperm;
++                    }));
++    assertEquals(0, choice.listen);
++    // Non-bind I/O errors still surface; only bind failures are probe results.
++    try {
++      WebPortPolicy.available(
++          40607,
++          port -> {
++            throw new java.io.IOException("other");
++          });
++      org.junit.Assert.fail();
++    } catch (java.io.IOException expected) {
++      assertEquals("other", expected.getMessage());
++    }
++  }
+ }
